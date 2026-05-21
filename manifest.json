@@ -2,7 +2,7 @@
   "name": "Mon Frigo",
   "short_name": "Frigo",
   "description": "Gestionnaire de frigo et placard avec scan de codes-barres",
-  "start_url": "/",
+  "start_url": "/frigo-app/",
   "display": "standalone",
   "background_color": "#0e0e0e",
   "theme_color": "#0e0e0e",
@@ -21,6 +21,11 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["food", "lifestyle", "utilities"],
-  "lang": "fr"
+  "categories": [
+    "food",
+    "lifestyle",
+    "utilities"
+  ],
+  "lang": "fr",
+  "scope": "/frigo-app/"
 }

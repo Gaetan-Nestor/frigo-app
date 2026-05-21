@@ -169,11 +169,19 @@
         <div class="scan-overlay">
           <div class="scan-frame">
             <div class="c2"></div>
-            <div class="scan-line"></div>
+            <div class="scan-line" id="scan-line" style="display:none"></div>
           </div>
         </div>
+        <div id="cam-start-overlay" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);gap:16px">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#b5f05a" stroke-width="1.4"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <p style="color:#f0f0f0;font-size:15px;font-weight:500;text-align:center;padding:0 20px">Appuyez pour activer<br>la caméra</p>
+          <button class="btn accent" onclick="App.requestCamera()" style="font-size:15px;padding:14px 32px;border-radius:100px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Démarrer le scan
+          </button>
+        </div>
       </div>
-      <p class="scan-status" id="scan-status">Pointez la caméra vers un code-barres</p>
+      <p class="scan-status" id="scan-status">Appuyez sur le bouton pour activer la caméra</p>
       <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
       <div class="manual-wrap">
         <input type="tel" id="manual-input" placeholder="Entrer un code-barres..." maxlength="20">
@@ -277,17 +285,24 @@ const App = (() => {
   }
 
   // ── Scanner ──
+  async function requestCamera() {
+    const overlay = document.getElementById('cam-start-overlay');
+    if (overlay) overlay.style.display = 'none';
+    await startScanner();
+  }
+
   async function startScanner() {
     if (scanning) return;
     if (typeof ZXing === 'undefined') { toast('Librairie de scan non chargée', 'warn'); return; }
     try {
       codeReader = new ZXing.BrowserMultiFormatReader();
-      const devices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
-      const back = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
-      const deviceId = back ? back.deviceId : undefined;
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      stream.getTracks().forEach(t => t.stop());
       scanning = true;
       document.getElementById('scan-status').textContent = 'Caméra active — pointez vers un code-barres';
-      await codeReader.decodeFromVideoDevice(deviceId, 'video', (result, err) => {
+      const line = document.getElementById('scan-line');
+      if (line) line.style.display = 'block';
+      await codeReader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } } }, 'video', (result, err) => {
         if (result) {
           const code = result.getText();
           if (code !== lastScanned) {
@@ -298,7 +313,12 @@ const App = (() => {
         }
       });
     } catch(e) {
-      document.getElementById('scan-status').textContent = 'Caméra non disponible — saisie manuelle';
+      document.getElementById('scan-status').textContent = 'Caméra non disponible — utilisez la saisie manuelle';
+      const overlay = document.getElementById('cam-start-overlay');
+      if (overlay) {
+        overlay.innerHTML = '<p style="color:#f0a952;font-size:14px;text-align:center;padding:0 24px;line-height:1.6">Accès caméra refusé.<br>Utilisez la saisie manuelle ci-dessous.</p>';
+        overlay.style.display = 'flex';
+      }
       scanning = false;
     }
   }
@@ -307,6 +327,10 @@ const App = (() => {
     if (codeReader) { try { codeReader.reset(); } catch(e){} codeReader = null; }
     scanning = false;
     lastScanned = '';
+    const overlay = document.getElementById('cam-start-overlay');
+    if (overlay && !overlay.querySelector('p[style*="f0a952"]')) overlay.style.display = 'flex';
+    const line = document.getElementById('scan-line');
+    if (line) line.style.display = 'none';
   }
 
   async function lookupBarcode(code) {
@@ -540,8 +564,7 @@ const App = (() => {
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
 
-    if (name === 'scan') { startScanner(); }
-    else { stopScanner(); }
+    if (name !== 'scan') { stopScanner(); }
     if (name === 'stock') renderStock();
     if (name === 'stats') renderStats();
     document.getElementById('screen').scrollTop = 0;
@@ -553,10 +576,9 @@ const App = (() => {
       e.preventDefault();
       deferredPrompt = e;
     });
-    startScanner();
   }
 
-  return { showPage, addItem, consumeItem, lookupManual, testCode, setFilter, changeQty, removeItem, init };
+  return { showPage, addItem, consumeItem, lookupManual, testCode, setFilter, changeQty, removeItem, init, requestCamera };
 })();
 
 document.addEventListener('DOMContentLoaded', () => App.init());
@@ -567,7 +589,7 @@ document.addEventListener('DOMContentLoaded', () => App.init());
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js');
+    navigator.serviceWorker.register('./sw.js');
   });
 }
 </script>
