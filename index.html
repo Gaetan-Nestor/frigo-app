@@ -165,7 +165,7 @@
     <!-- SCAN PAGE -->
     <div id="page-scan">
       <div class="scanner-wrap" id="scanner-wrap">
-        <video id="video" playsinline muted autoplay></video>
+        <video id="video" playsinline muted autoplay style="min-height:260px;max-height:55vh"></video>
         <div class="scan-overlay">
           <div class="scan-frame">
             <div class="c2"></div>
@@ -295,24 +295,61 @@ const App = (() => {
     if (scanning) return;
     if (typeof ZXing === 'undefined') { toast('Librairie de scan non chargée', 'warn'); return; }
     try {
-      codeReader = new ZXing.BrowserMultiFormatReader();
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      // Hints pour améliorer la détection sur Android
+      const hints = new Map();
+      const formats = [
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E,
+        ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.DATA_MATRIX,
+      ];
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+      codeReader = new ZXing.BrowserMultiFormatReader(hints, 800);
+
+      // Contraintes haute résolution pour Xiaomi et autres Android
+      const constraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          focusMode: { ideal: 'continuous' },
+          advanced: [{ focusMode: 'continuous' }]
+        }
+      };
+
+      // Demander permission d'abord
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       stream.getTracks().forEach(t => t.stop());
+
       scanning = true;
-      document.getElementById('scan-status').textContent = 'Caméra active — pointez vers un code-barres';
+      document.getElementById('scan-status').textContent = '📷 Pointez vers un code-barres…';
       const line = document.getElementById('scan-line');
       if (line) line.style.display = 'block';
-      await codeReader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } } }, 'video', (result, err) => {
+
+      await codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
         if (result) {
           const code = result.getText();
           if (code !== lastScanned) {
             lastScanned = code;
-            navigator.vibrate && navigator.vibrate(50);
+            navigator.vibrate && navigator.vibrate([50, 30, 50]);
+            document.getElementById('scan-status').textContent = '✅ Code détecté !';
             lookupBarcode(code);
+            // Reset après 3s pour permettre un nouveau scan
+            setTimeout(() => {
+              lastScanned = '';
+              if (scanning) document.getElementById('scan-status').textContent = '📷 Pointez vers un code-barres…';
+            }, 3000);
           }
         }
       });
     } catch(e) {
+      console.error('Scanner error:', e);
       document.getElementById('scan-status').textContent = 'Caméra non disponible — utilisez la saisie manuelle';
       const overlay = document.getElementById('cam-start-overlay');
       if (overlay) {
