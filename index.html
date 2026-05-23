@@ -226,7 +226,9 @@
           <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Clé API Firebase</label>
           <input id="fb-apikey" type="text" placeholder="AIzaSy..." style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;margin-bottom:10px">
           <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">ID du projet</label>
-          <input id="fb-projectid" type="text" placeholder="mon-frigo-12345" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;margin-bottom:14px">
+          <input id="fb-projectid" type="text" placeholder="gestion-nourriture-b77ae" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;margin-bottom:10px">
+          <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">URL de la base de données</label>
+          <input id="fb-dburl" type="text" placeholder="https://xxx-default-rtdb.europe-west1.firebasedatabase.app" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:14px">
           <button class="btn accent" style="width:100%;justify-content:center;padding:13px" onclick="App.saveFirebaseConfig()">Connecter Firebase</button>
           <p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">Voir le guide dans le README pour obtenir ces informations</p>
         </div>
@@ -793,23 +795,34 @@ const App = (() => {
 
   function showFirebaseSetup() {
     updateSyncStatus('local');
-    // Show setup banner in scan page
     const banner = document.getElementById('firebase-banner');
-    if (banner) banner.style.display = 'block';
+    if (banner) {
+      banner.style.display = 'block';
+      // Pre-fill from saved config
+      const saved = JSON.parse(localStorage.getItem('frigo_firebase_cfg') || 'null');
+      if (saved) {
+        const ak = document.getElementById('fb-apikey');
+        const pid = document.getElementById('fb-projectid');
+        const dbu = document.getElementById('fb-dburl');
+        if (ak && saved.apiKey) ak.value = saved.apiKey;
+        if (pid && saved.projectId) pid.value = saved.projectId;
+        if (dbu && saved.databaseURL) dbu.value = saved.databaseURL;
+      }
+    }
   }
 
   function saveFirebaseConfig() {
     const apiKey = document.getElementById('fb-apikey').value.trim();
     const projectId = document.getElementById('fb-projectid').value.trim();
     if (!apiKey || !projectId) { toast('Remplis les deux champs', 'warn'); return; }
+    const dbUrl = document.getElementById('fb-dburl').value.trim();
+    if (!dbUrl) { toast('Remplis tous les champs', 'warn'); return; }
     const cfg = {
       apiKey,
       authDomain: projectId + '.firebaseapp.com',
-      databaseURL: 'https://' + projectId + '-default-rtdb.europe-west1.firebasedatabase.app',
+      databaseURL: dbUrl,
       projectId,
       storageBucket: projectId + '.appspot.com',
-      messagingSenderId: '000000000000',
-      appId: '1:000000000000:web:000000'
     };
     connectFirebase(cfg);
     document.getElementById('firebase-banner').style.display = 'none';
