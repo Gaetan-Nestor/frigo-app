@@ -14,6 +14,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    window._firebaseModules = { initializeApp, getDatabase, ref, onValue, set, get };
+  </script>
   <style>
     :root {
       --bg: #0e0e0e;
@@ -47,7 +52,7 @@
     nav button.active { color: var(--accent); }
 
     /* ── Page header ── */
-    .page-header { padding: 56px 20px 20px; display: flex; align-items: flex-end; justify-content: space-between; }
+    .page-header { padding: 68px 20px 20px; display: flex; align-items: flex-end; justify-content: space-between; }
     .page-header h1 { font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
     .page-header .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
 
@@ -213,6 +218,20 @@
 
       <div id="product-card" style="display:none"></div>
 
+      <!-- Firebase setup banner -->
+      <div id="firebase-banner" style="display:none;margin:0 20px 16px">
+        <div style="background:rgba(181,240,90,0.06);border:1px solid rgba(181,240,90,0.2);border-radius:var(--radius);padding:16px">
+          <p style="font-size:14px;font-weight:600;color:var(--accent);margin-bottom:6px">⚡ Activer la synchronisation</p>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5">Partagez votre stock avec Ninie en temps réel. Gratuit via Firebase.</p>
+          <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Clé API Firebase</label>
+          <input id="fb-apikey" type="text" placeholder="AIzaSy..." style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;margin-bottom:10px">
+          <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">ID du projet</label>
+          <input id="fb-projectid" type="text" placeholder="mon-frigo-12345" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;margin-bottom:14px">
+          <button class="btn accent" style="width:100%;justify-content:center;padding:13px" onclick="App.saveFirebaseConfig()">Connecter Firebase</button>
+          <p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">Voir le guide dans le README pour obtenir ces informations</p>
+        </div>
+      </div>
+
       <div style="padding: 0 20px 16px">
         <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Codes-barres de test :</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -249,6 +268,9 @@
 
   </div>
 
+  <div id="sync-status" style="position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--bg2);border-bottom:1px solid var(--border);padding:6px 16px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;z-index:50;font-weight:500">
+    <span style="color:var(--muted);font-size:10px">⬤</span> Local uniquement
+  </div>
   <nav id="nav">
     <button class="active" onclick="App.showPage('scan',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
@@ -275,19 +297,33 @@
 <script>
 const DEFAULT_LOCS = { frigo:'🧊 Frigo', congelateur:'❄️ Congélateur', placard:'🗄️ Placard', corbeille:'🧺 Corbeille' };
 let LOCS = JSON.parse(localStorage.getItem('frigo_locs') || JSON.stringify(DEFAULT_LOCS));
-function saveLocs() { localStorage.setItem('frigo_locs', JSON.stringify(LOCS)); }
+function saveLocs() {
+  localStorage.setItem('frigo_locs', JSON.stringify(LOCS));
+  if (db && fbConnected) {
+    const { ref, set } = window._firebaseModules;
+    set(ref(db, 'locs'), LOCS).catch(e => console.warn('Firebase saveLocs error:', e));
+  }
+}
 const EMOJIS = { dairy:'🧀', milk:'🥛', cheese:'🧀', fruit:'🍎', vegetable:'🥦', beverage:'🥤', drink:'🥤', bread:'🍞', meat:'🥩', fish:'🐟', pasta:'🍝', rice:'🍚', coffee:'☕', chocolate:'🍫', yogurt:'🥛', juice:'🍊', water:'💧', soup:'🍲', cereal:'🥣', sauce:'🫙', oil:'🫒', spice:'🌶️', egg:'🥚', butter:'🧈', cream:'🥛' };
 
 const App = (() => {
   let stock = JSON.parse(localStorage.getItem('frigo_v2') || '[]');
   let filter = 'all';
+  let db = null;
+  let fbConnected = false;
   let codeReader = null;
   let scanning = false;
   let lastScanned = '';
   let currentProduct = null;
   let deferredPrompt = null;
 
-  function save() { localStorage.setItem('frigo_v2', JSON.stringify(stock)); }
+  function save() {
+    localStorage.setItem('frigo_v2', JSON.stringify(stock));
+    if (db && fbConnected) {
+      const { ref, set } = window._firebaseModules;
+      set(ref(db, 'stock'), stock).catch(e => console.warn('Firebase save error:', e));
+    }
+  }
 
   function getEmoji(cat = '') {
     const c = cat.toLowerCase();
@@ -643,11 +679,109 @@ const App = (() => {
   }
 
   // ── Init ──
-  function init() {
+  async function init() {
     window.addEventListener('beforeinstallprompt', e => {
       e.preventDefault();
       deferredPrompt = e;
     });
+
+    // Wait for Firebase modules to load
+    let attempts = 0;
+    while (!window._firebaseModules && attempts < 20) {
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+
+    const cfg = JSON.parse(localStorage.getItem('frigo_firebase_cfg') || 'null');
+    if (cfg && window._firebaseModules) {
+      connectFirebase(cfg);
+    } else {
+      showFirebaseSetup();
+    }
+  }
+
+  function connectFirebase(cfg) {
+    try {
+      const { initializeApp, getDatabase, ref, onValue } = window._firebaseModules;
+      const app = initializeApp(cfg, 'frigo-app');
+      db = getDatabase(app);
+      fbConnected = true;
+      localStorage.setItem('frigo_firebase_cfg', JSON.stringify(cfg));
+
+      // Sync status indicator
+      updateSyncStatus('connecting');
+
+      // Listen to stock changes in real-time
+      onValue(ref(db, 'stock'), snapshot => {
+        const data = snapshot.val();
+        if (data && Array.isArray(data)) {
+          stock = data;
+          localStorage.setItem('frigo_v2', JSON.stringify(stock));
+        } else if (data === null && stock.length > 0) {
+          // First time: push local stock to Firebase
+          save();
+        }
+        updateSyncStatus('ok');
+        const page = document.querySelector('#tab-stock') || document.getElementById('page-stock');
+        if (page && page.style.display !== 'none') renderStock();
+        if (document.getElementById('page-stats') && document.getElementById('page-stats').style.display !== 'none') renderStats();
+      }, err => {
+        console.warn('Firebase error:', err);
+        updateSyncStatus('error');
+      });
+
+      // Listen to locs changes
+      onValue(ref(db, 'locs'), snapshot => {
+        const data = snapshot.val();
+        if (data && typeof data === 'object') {
+          LOCS = { ...DEFAULT_LOCS, ...data };
+          localStorage.setItem('frigo_locs', JSON.stringify(LOCS));
+        }
+      });
+
+    } catch(e) {
+      console.error('Firebase connect error:', e);
+      updateSyncStatus('error');
+      fbConnected = false;
+    }
+  }
+
+  function updateSyncStatus(status) {
+    const el = document.getElementById('sync-status');
+    if (!el) return;
+    const states = {
+      connecting: { icon: '⟳', color: 'var(--warn)', text: 'Connexion…' },
+      ok: { icon: '⬤', color: '#3fb950', text: 'Synchronisé' },
+      error: { icon: '⬤', color: 'var(--danger)', text: 'Hors ligne' },
+      local: { icon: '⬤', color: 'var(--muted)', text: 'Local uniquement' }
+    };
+    const s = states[status] || states.local;
+    el.innerHTML = `<span style="color:${s.color};font-size:10px">${s.icon}</span> ${s.text}`;
+  }
+
+  function showFirebaseSetup() {
+    updateSyncStatus('local');
+    // Show setup banner in scan page
+    const banner = document.getElementById('firebase-banner');
+    if (banner) banner.style.display = 'block';
+  }
+
+  function saveFirebaseConfig() {
+    const apiKey = document.getElementById('fb-apikey').value.trim();
+    const projectId = document.getElementById('fb-projectid').value.trim();
+    if (!apiKey || !projectId) { toast('Remplis les deux champs', 'warn'); return; }
+    const cfg = {
+      apiKey,
+      authDomain: projectId + '.firebaseapp.com',
+      databaseURL: 'https://' + projectId + '-default-rtdb.europe-west1.firebasedatabase.app',
+      projectId,
+      storageBucket: projectId + '.appspot.com',
+      messagingSenderId: '000000000000',
+      appId: '1:000000000000:web:000000'
+    };
+    connectFirebase(cfg);
+    document.getElementById('firebase-banner').style.display = 'none';
+    toast('✓ Firebase connecté !');
   }
 
 
@@ -752,7 +886,7 @@ const App = (() => {
     toast('Emplacement supprimé');
   }
 
-  return { showPage, addItem, consumeItem, lookupManual, testCode, setFilter, changeQty, removeItem, init, requestCamera, openEdit, closeEdit, saveEdit, openLocs, closeLocs, addLoc, deleteLoc };
+  return { showPage, addItem, consumeItem, lookupManual, testCode, setFilter, changeQty, removeItem, init, requestCamera, openEdit, closeEdit, saveEdit, openLocs, closeLocs, addLoc, deleteLoc, saveFirebaseConfig };
 })();
 
 document.addEventListener('DOMContentLoaded', () => App.init());
