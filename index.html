@@ -702,41 +702,66 @@ const App = (() => {
 
   function connectFirebase(cfg) {
     try {
-      const { initializeApp, getDatabase, ref, onValue } = window._firebaseModules;
+      const { initializeApp, getDatabase, ref, onValue, get } = window._firebaseModules;
       const app = initializeApp(cfg, 'frigo-app');
       db = getDatabase(app);
       fbConnected = true;
       localStorage.setItem('frigo_firebase_cfg', JSON.stringify(cfg));
-
-      // Sync status indicator
       updateSyncStatus('connecting');
 
-      // Listen to stock changes in real-time
-      onValue(ref(db, 'stock'), snapshot => {
-        const data = snapshot.val();
-        if (data && Array.isArray(data)) {
-          stock = data;
-          localStorage.setItem('frigo_v2', JSON.stringify(stock));
-        } else if (data === null && stock.length > 0) {
-          // First time: push local stock to Firebase
-          save();
-        }
-        updateSyncStatus('ok');
-        const page = document.querySelector('#tab-stock') || document.getElementById('page-stock');
-        if (page && page.style.display !== 'none') renderStock();
-        if (document.getElementById('page-stats') && document.getElementById('page-stats').style.display !== 'none') renderStats();
-      }, err => {
-        console.warn('Firebase error:', err);
-        updateSyncStatus('error');
-      });
-
-      // Listen to locs changes
-      onValue(ref(db, 'locs'), snapshot => {
+      // 1. Charger les emplacements EN PREMIER (get = lecture unique immédiate)
+      get(ref(db, 'locs')).then(snapshot => {
         const data = snapshot.val();
         if (data && typeof data === 'object') {
           LOCS = { ...DEFAULT_LOCS, ...data };
           localStorage.setItem('frigo_locs', JSON.stringify(LOCS));
         }
+
+        // 2. Ensuite écouter le stock en temps réel
+        onValue(ref(db, 'stock'), snapshot => {
+          const data = snapshot.val();
+          if (data && Array.isArray(data)) {
+            stock = data;
+            localStorage.setItem('frigo_v2', JSON.stringify(stock));
+          } else if (data === null && stock.length > 0) {
+            save();
+          }
+          updateSyncStatus('ok');
+          if (document.getElementById('page-stock') && document.getElementById('page-stock').style.display !== 'none') renderStock();
+          if (document.getElementById('page-stats') && document.getElementById('page-stats').style.display !== 'none') renderStats();
+        }, err => {
+          console.warn('Firebase stock error:', err);
+          updateSyncStatus('error');
+        });
+
+        // 3. Écouter les changements d'emplacements en temps réel
+        onValue(ref(db, 'locs'), snapshot => {
+          const data = snapshot.val();
+          if (data && typeof data === 'object') {
+            LOCS = { ...DEFAULT_LOCS, ...data };
+            localStorage.setItem('frigo_locs', JSON.stringify(LOCS));
+            // Rafraîchir les filtres si on est sur la page stock
+            if (document.getElementById('page-stock') && document.getElementById('page-stock').style.display !== 'none') renderStock();
+          }
+        });
+
+      }).catch(e => {
+        console.warn('Firebase locs preload error:', e);
+        // Continuer quand même avec les emplacements locaux
+        onValue(ref(db, 'stock'), snapshot => {
+          const data = snapshot.val();
+          if (data && Array.isArray(data)) {
+            stock = data;
+            localStorage.setItem('frigo_v2', JSON.stringify(stock));
+          } else if (data === null && stock.length > 0) {
+            save();
+          }
+          updateSyncStatus('ok');
+          if (document.getElementById('page-stock') && document.getElementById('page-stock').style.display !== 'none') renderStock();
+          if (document.getElementById('page-stats') && document.getElementById('page-stats').style.display !== 'none') renderStats();
+        }, err => {
+          updateSyncStatus('error');
+        });
       });
 
     } catch(e) {
