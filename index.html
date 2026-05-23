@@ -156,7 +156,28 @@
 
     .progress { height: 2px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin: 0 20px 4px; }
     .progress-bar { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
-  </style>
+
+    /* ── Modal ── */
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; display: flex; align-items: flex-end; justify-content: center; backdrop-filter: blur(4px); animation: fadeIn .2s; }
+    @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
+    .modal { background: var(--bg2); border-radius: 24px 24px 0 0; padding: 24px 20px max(24px, env(safe-area-inset-bottom)); width: 100%; max-width: 480px; animation: slideUp2 .25s cubic-bezier(.34,1.2,.64,1); max-height: 85vh; overflow-y: auto; }
+    @keyframes slideUp2 { from { transform:translateY(100%) } to { transform:translateY(0) } }
+    .modal-handle { width: 36px; height: 4px; background: var(--border2); border-radius: 2px; margin: 0 auto 20px; }
+    .modal-title { font-size: 17px; font-weight: 600; margin-bottom: 18px; }
+    .modal label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 6px; margin-top: 14px; }
+    .modal select, .modal input[type=text], .modal input[type=date], .modal input[type=number] { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; color: var(--text); font-family: var(--sans); font-size: 15px; outline: none; -webkit-appearance: none; }
+    .modal select:focus, .modal input:focus { border-color: var(--border2); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .modal-actions .btn { flex: 1; justify-content: center; padding: 14px; font-size: 15px; border-radius: 12px; }
+    .loc-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .loc-row { display: flex; align-items: center; gap: 10px; background: var(--bg3); border-radius: 10px; padding: 10px 14px; }
+    .loc-row span { flex: 1; font-size: 15px; }
+    .loc-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 2px 6px; border-radius: 6px; }
+    .loc-del:active { color: var(--danger); }
+    .add-loc-row { display: flex; gap: 8px; margin-top: 10px; }
+    .add-loc-row input { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; color: var(--text); font-family: var(--sans); font-size: 15px; outline: none; }
+    .add-loc-row input:focus { border-color: var(--border2); }
+    </style>
 </head>
 <body>
 <div id="app">
@@ -210,6 +231,10 @@
           <h1>Mon stock</h1>
           <div class="sub" id="stock-count">0 produit</div>
         </div>
+        <button class="btn ghost" style="padding:8px 12px;font-size:13px" onclick="App.openLocs()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+          Emplacements
+        </button>
       </div>
       <div class="filter-scroll" id="filter-scroll"></div>
       <div class="items-list" id="items-list"></div>
@@ -238,12 +263,19 @@
       Stats
     </button>
   </nav>
+
+  <!-- EDIT MODAL -->
+  <div id="edit-modal" style="display:none"></div>
+  <!-- LOCATIONS MODAL -->
+  <div id="locs-modal" style="display:none"></div>
 </div>
 
 <div id="toast"></div>
 
 <script>
-const LOCS = { frigo:'🧊 Frigo', congelateur:'❄️ Congélateur', placard:'🗄️ Placard', corbeille:'🧺 Corbeille' };
+const DEFAULT_LOCS = { frigo:'🧊 Frigo', congelateur:'❄️ Congélateur', placard:'🗄️ Placard', corbeille:'🧺 Corbeille' };
+let LOCS = JSON.parse(localStorage.getItem('frigo_locs') || JSON.stringify(DEFAULT_LOCS));
+function saveLocs() { localStorage.setItem('frigo_locs', JSON.stringify(LOCS)); }
 const EMOJIS = { dairy:'🧀', milk:'🥛', cheese:'🧀', fruit:'🍎', vegetable:'🥦', beverage:'🥤', drink:'🥤', bread:'🍞', meat:'🥩', fish:'🐟', pasta:'🍝', rice:'🍚', coffee:'☕', chocolate:'🍫', yogurt:'🥛', juice:'🍊', water:'💧', soup:'🍲', cereal:'🥣', sauce:'🫙', oil:'🫒', spice:'🌶️', egg:'🥚', butter:'🧈', cream:'🥛' };
 
 const App = (() => {
@@ -541,7 +573,10 @@ const App = (() => {
             <span class="qty-num">${item.qty}</span>
             <button class="qty-btn" onclick="App.changeQty(${ri},1)">+</button>
           </div>
-          <button class="del-btn" onclick="App.removeItem(${ri})" aria-label="Supprimer">
+          <button class="del-btn" onclick="App.openEdit(${ri})" aria-label="Modifier" title="Modifier">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="del-btn" onclick="App.removeItem(${ri})" aria-label="Supprimer" title="Supprimer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
           </button>
         </div>
@@ -615,7 +650,109 @@ const App = (() => {
     });
   }
 
-  return { showPage, addItem, consumeItem, lookupManual, testCode, setFilter, changeQty, removeItem, init, requestCamera };
+
+  // ── Edit item modal ──
+  function openEdit(idx) {
+    const item = stock[idx];
+    const locOptions = Object.entries(LOCS).map(([k,v]) =>
+      `<option value="${k}" ${item.location===k?'selected':''}>${v}</option>`
+    ).join('');
+    const dlcVal = item.dlc || '';
+    document.getElementById('edit-modal').style.display = 'block';
+    document.getElementById('edit-modal').innerHTML = `
+      <div class="modal-bg" onclick="if(event.target===this)App.closeEdit()">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <div class="modal-title">Modifier — ${item.name}</div>
+          <label>Emplacement</label>
+          <select id="edit-loc">${locOptions}</select>
+          <label>Quantité</label>
+          <input type="number" id="edit-qty" value="${item.qty}" min="1" max="99">
+          <label>Date limite (DLC)</label>
+          <input type="date" id="edit-dlc" value="${dlcVal}">
+          <div class="modal-actions">
+            <button class="btn ghost" onclick="App.closeEdit()">Annuler</button>
+            <button class="btn accent" onclick="App.saveEdit(${idx})">Enregistrer</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function closeEdit() {
+    document.getElementById('edit-modal').style.display = 'none';
+    document.getElementById('edit-modal').innerHTML = '';
+  }
+
+  function saveEdit(idx) {
+    stock[idx].location = document.getElementById('edit-loc').value;
+    stock[idx].qty = parseInt(document.getElementById('edit-qty').value) || 1;
+    stock[idx].dlc = document.getElementById('edit-dlc').value;
+    save();
+    closeEdit();
+    renderStock();
+    toast('✓ Article modifié');
+  }
+
+  // ── Locations modal ──
+  function openLocs() {
+    renderLocsModal();
+    document.getElementById('locs-modal').style.display = 'block';
+  }
+
+  function closeLocs() {
+    document.getElementById('locs-modal').style.display = 'none';
+    document.getElementById('locs-modal').innerHTML = '';
+  }
+
+  function renderLocsModal() {
+    const rows = Object.entries(LOCS).map(([k, v]) => {
+      const isDefault = Object.keys(DEFAULT_LOCS).includes(k);
+      return `<div class="loc-row">
+        <span>${v}</span>
+        ${!isDefault ? `<button class="loc-del" onclick="App.deleteLoc('${k}')" title="Supprimer">✕</button>` : '<span style="font-size:11px;color:var(--muted)">défaut</span>'}
+      </div>`;
+    }).join('');
+    document.getElementById('locs-modal').innerHTML = `
+      <div class="modal-bg" onclick="if(event.target===this)App.closeLocs()">
+        <div class="modal">
+          <div class="modal-handle"></div>
+          <div class="modal-title">Gérer les emplacements</div>
+          <div class="loc-list">${rows}</div>
+          <div style="margin-top:18px;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em">Ajouter un emplacement</div>
+          <div class="add-loc-row" style="margin-top:8px">
+            <input type="text" id="new-loc-input" placeholder="Ex: 🍷 Cave à vin" maxlength="30">
+            <button class="btn accent" style="padding:11px 16px;flex-shrink:0" onclick="App.addLoc()">Ajouter</button>
+          </div>
+          <div class="modal-actions" style="margin-top:16px">
+            <button class="btn ghost" onclick="App.closeLocs()">Fermer</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function addLoc() {
+    const input = document.getElementById('new-loc-input');
+    const val = input.value.trim();
+    if (!val) return;
+    const key = 'custom_' + Date.now();
+    LOCS[key] = val;
+    saveLocs();
+    input.value = '';
+    renderLocsModal();
+    toast('✓ Emplacement ajouté');
+  }
+
+  function deleteLoc(key) {
+    // Move items from deleted location to frigo
+    stock.forEach(i => { if (i.location === key) i.location = 'frigo'; });
+    save();
+    delete LOCS[key];
+    saveLocs();
+    renderLocsModal();
+    toast('Emplacement supprimé');
+  }
+
+  return { showPage, addItem, consumeItem, lookupManual, testCode, setFilter, changeQty, removeItem, init, requestCamera, openEdit, closeEdit, saveEdit, openLocs, closeLocs, addLoc, deleteLoc };
 })();
 
 document.addEventListener('DOMContentLoaded', () => App.init());
