@@ -299,9 +299,12 @@ const DEFAULT_LOCS = { frigo:'🧊 Frigo', congelateur:'❄️ Congélateur', pl
 let LOCS = JSON.parse(localStorage.getItem('frigo_locs') || JSON.stringify(DEFAULT_LOCS));
 function saveLocs() {
   localStorage.setItem('frigo_locs', JSON.stringify(LOCS));
-  if (db && fbConnected) {
-    const { ref, set } = window._firebaseModules;
-    set(ref(db, 'locs'), LOCS).catch(e => console.warn('Firebase saveLocs error:', e));
+  if (window._db && window._fbConnected && window._firebaseSet && window._firebaseRef) {
+    window._firebaseSet(window._firebaseRef(window._db, 'locs'), LOCS)
+      .then(() => console.log('locs saved to Firebase'))
+      .catch(e => console.warn('Firebase saveLocs error:', e));
+  } else {
+    console.warn('saveLocs: Firebase not ready yet');
   }
 }
 const EMOJIS = { dairy:'🧀', milk:'🥛', cheese:'🧀', fruit:'🍎', vegetable:'🥦', beverage:'🥤', drink:'🥤', bread:'🍞', meat:'🥩', fish:'🐟', pasta:'🍝', rice:'🍚', coffee:'☕', chocolate:'🍫', yogurt:'🥛', juice:'🍊', water:'💧', soup:'🍲', cereal:'🥣', sauce:'🫙', oil:'🫒', spice:'🌶️', egg:'🥚', butter:'🧈', cream:'🥛' };
@@ -706,6 +709,10 @@ const App = (() => {
       const app = initializeApp(cfg, 'frigo-app');
       db = getDatabase(app);
       fbConnected = true;
+      window._db = db;
+      window._fbConnected = true;
+      window._firebaseSet = set;
+      window._firebaseRef = ref;
       localStorage.setItem('frigo_firebase_cfg', JSON.stringify(cfg));
       updateSyncStatus('connecting');
 
