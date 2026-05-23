@@ -324,9 +324,9 @@ const App = (() => {
 
   function save() {
     localStorage.setItem('frigo_v2', JSON.stringify(stock));
-    if (db && fbConnected) {
-      const { ref, set } = window._firebaseModules;
-      set(ref(db, 'stock'), stock).catch(e => console.warn('Firebase save error:', e));
+    if (window._db && window._fbConnected && window._firebaseSet && window._firebaseRef) {
+      window._firebaseSet(window._firebaseRef(window._db, 'stock'), stock)
+        .catch(e => console.warn('Firebase save error:', e));
     }
   }
 
@@ -707,7 +707,7 @@ const App = (() => {
 
   function connectFirebase(cfg) {
     try {
-      const { initializeApp, getDatabase, ref, onValue, get } = window._firebaseModules;
+      const { initializeApp, getDatabase, ref, onValue, get, set } = window._firebaseModules;
       const app = initializeApp(cfg, 'frigo-app');
       db = getDatabase(app);
       fbConnected = true;
